@@ -1,10 +1,14 @@
-# COMPLETELY FIXED VERSION WITH ALL IMPROVEMENTS
+# COMPLETELY FIXED VERSION WITH ALL IMPROVEMENTS AND STYLING UPDATES
 
 # 1. CRITICAL FIXES AT THE TOP
 import asyncio
 import sys
 import os
 from pathlib import Path
+import warnings
+
+# Suppress specific warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="torch._classes")
 
 # Windows-specific fixes
 if sys.platform == "win32":
@@ -14,6 +18,7 @@ if sys.platform == "win32":
     
     # Disable problematic file watcher
     os.environ['STREAMLIT_SERVER_ENABLE_STATIC_FILE_HANDLING'] = 'false'
+    os.environ['STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION'] = 'false'
 
 # 2. PATH CONFIGURATION WITH FALLBACKS
 try:
@@ -66,22 +71,35 @@ st.markdown("""
         width: 100%;
     }
     .metric-box {
-        border-left: 5px solid #4e79a7;
-        padding: 10px;
-        margin-bottom: 10px;
-        background-color: #f0f2f6;
-        border-radius: 5px;
+        background-color: #1E88E5;
+        color: white;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+    .metric-box h3 {
+        color: white !important;
+        margin-top: 0;
+        margin-bottom: 8px;
+        font-size: 16px;
+    }
+    .metric-box p {
+        margin-bottom: 0;
+        font-size: 20px;
+        font-weight: bold;
     }
     .risk-high {
-        color: #d62728;
+        color: #FF5252;
         font-weight: bold;
     }
     .risk-medium {
-        color: #ff7f0e;
+        color: #FFC107;
         font-weight: bold;
     }
     .risk-low {
-        color: #2ca02c;
+        color: #4CAF50;
         font-weight: bold;
     }
     .sidebar .sidebar-content {
@@ -91,6 +109,14 @@ st.markdown("""
         padding: 10px;
         background: #f0f2f6;
         border-radius: 5px;
+    }
+    .stButton>button {
+        background-color: #1E88E5;
+        color: white;
+    }
+    .stButton>button:hover {
+        background-color: #1565C0;
+        color: white;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -186,7 +212,7 @@ if 'processed' in st.session_state and st.session_state['processed']:
         st.error(f"Couldn't load results: {str(e)}")
         st.stop()
     
-    # Overall metrics
+    # Overall metrics - Updated with blue background and white text
     st.header("📊 Safety Summary")
     col1, col2, col3 = st.columns(3)
     
@@ -205,7 +231,7 @@ if 'processed' in st.session_state and st.session_state['processed']:
         st.markdown(f"""
         <div class="metric-box">
             <h3>Average Safety Score</h3>
-            <p><span class="{risk_class}">{avg_score:.1f}/10</span> ({risk_level})</p>
+            <p><span class="{risk_class}">{avg_score:.1f}/10</span><br>({risk_level})</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -230,7 +256,7 @@ if 'processed' in st.session_state and st.session_state['processed']:
     # Score timeline
     st.header("📈 Safety Score Over Time")
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(report_df['start_time'], report_df['score'], marker='o', markersize=3, color='#4e79a7')
+    ax.plot(report_df['start_time'], report_df['score'], marker='o', markersize=3, color='#1E88E5')
     ax.set_xlabel("Time (seconds)")
     ax.set_ylabel("Safety Score")
     ax.set_ylim(0, 10)
