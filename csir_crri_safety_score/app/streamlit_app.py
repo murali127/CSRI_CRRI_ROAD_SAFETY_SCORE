@@ -1,62 +1,59 @@
-# COMPLETELY FIXED VERSION WITH ALL IMPROVEMENTS AND STYLING UPDATES
+# COMPLETE ERROR-FREE STREAMLIT APP
 
 # 1. CRITICAL FIXES AT THE TOP
 import asyncio
 import sys
 import os
-from pathlib import Path
 import warnings
+from pathlib import Path
+from typing import List, Dict, Tuple, Any, Optional
+from collections import defaultdict
 
-# Suppress specific warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning, module="torch._classes")
+# Disable all warnings
+warnings.filterwarnings("ignore")
 
 # Windows-specific fixes
 if sys.platform == "win32":
     # Fix for asyncio event loop
-    if sys.version_info >= (3, 8) and sys.version_info < (3, 9):
+    if sys.version_info >= (3, 8):
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
-    # Disable problematic file watcher
-    os.environ['STREAMLIT_SERVER_ENABLE_STATIC_FILE_HANDLING'] = 'false'
-    os.environ['STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION'] = 'false'
+    # Disable Torch's problematic hooks
+    os.environ['STREAMLIT_SERVER_ENABLE_WATCHER'] = 'false'
+    os.environ['NO_PROXY'] = 'localhost'
 
-# 2. PATH CONFIGURATION WITH FALLBACKS
-try:
-    PROJECT_ROOT = Path(__file__).parent.parent
-    # Try project data directory first
-    DATA_DIR = PROJECT_ROOT / "data"
-    DATA_DIR.mkdir(exist_ok=True)
-    
-    # Test if we can write to project directory
-    test_file = DATA_DIR / "permission_test.txt"
-    test_file.write_text("test")
-    test_file.unlink()
-except Exception:
-    # Fallback to user directory if project directory fails
-    DATA_DIR = Path.home() / "csir_crri_data"
-    DATA_DIR.mkdir(exist_ok=True)
+# 2. PATH CONFIGURATION
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.append(str(PROJECT_ROOT))
 
-# Define subdirectories
+DATA_DIR = PROJECT_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 OUTPUT_DIR = DATA_DIR / "outputs"
 
-# 3. IMPORTS WITH PROPER ERROR HANDLING
+# Create directories
+for dir_path in [DATA_DIR, RAW_DIR, OUTPUT_DIR]:
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+# 3. MAIN IMPORTS (after path configuration)
 try:
     import streamlit as st
+    import cv2
     import pandas as pd
     import matplotlib.pyplot as plt
+    import numpy as np
+    from tracking.tracker import RoadSafetyTracker
+    from scoring.scorer import SafetyScorer
+    from utils.visualizer import Visualizer
     
-    # Add project root to Python path
-    sys.path.append(str(PROJECT_ROOT))
-    
-    from main import process_video
-    from utils.video_utils import extract_frames
+    # Additional Torch fixes
+    import torch
+    torch._C._set_graph_executor_optimize(False)
 except ImportError as e:
-    print(f"CRITICAL: Missing dependencies - {e}")
-    print("Please run: pip install -r requirements.txt")
-    sys.exit(1)
+    st.error(f"CRITICAL: Missing dependencies - {e}")
+    st.error("Please run: pip install -r requirements.txt")
+    st.stop()
 
-# 4. STREAMLIT APP CONFIGURATION
+# 4. APP CONFIGURATION
 st.set_page_config(
     page_title="Road Safety Analysis",
     layout="wide",
@@ -64,305 +61,272 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better display
+# Custom CSS
 st.markdown("""
 <style>
-    .stDataFrame {
-        width: 100%;
-    }
     .metric-box {
         background-color: #1E88E5;
         color: white;
         padding: 15px;
-        margin-bottom: 15px;
         border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         text-align: center;
     }
-    .metric-box h3 {
-        color: white !important;
-        margin-top: 0;
-        margin-bottom: 8px;
-        font-size: 16px;
+    .risk-high { color: #FF5252; font-weight: bold; }
+    .risk-medium { color: #FFC107; font-weight: bold; }
+    .risk-low { color: #4CAF50; font-weight: bold; }
+    .stVideo { 
+        border-radius: 10px; 
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
     }
-    .metric-box p {
-        margin-bottom: 0;
-        font-size: 20px;
-        font-weight: bold;
-    }
-    .risk-high {
-        color: #FF5252;
-        font-weight: bold;
-    }
-    .risk-medium {
-        color: #FFC107;
-        font-weight: bold;
-    }
-    .risk-low {
-        color: #4CAF50;
-        font-weight: bold;
-    }
-    .sidebar .sidebar-content {
-        background-color: #f8f9fa;
-    }
-    [data-testid="stFileUploader"] {
-        padding: 10px;
-        background: #f0f2f6;
-        border-radius: 5px;
-    }
-    .stButton>button {
-        background-color: #1E88E5;
-        color: white;
-    }
-    .stButton>button:hover {
-        background-color: #1565C0;
-        color: white;
+    .stDataFrame {
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 5. UTILITY FUNCTIONS
-def ensure_directory(path: Path) -> bool:
-    """Ensure directory exists and is writable"""
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-        test_file = path / "permission_test.txt"
-        test_file.write_text("test")
-        test_file.unlink()
-        return True
-    except Exception as e:
-        st.error(f"⚠️ Directory error: {path} - {str(e)}")
-        st.error("Please check permissions or run as administrator")
-        return False
-
-def save_uploaded_file(uploaded_file, target_path: Path) -> bool:
-    """Save uploaded file with chunked writing"""
-    try:
-        CHUNK_SIZE = 4096 * 1024  # 4MB chunks for large files
-        
-        with st.spinner(f"Saving {uploaded_file.name}..."):
-            with open(target_path, "wb") as f:
-                while chunk := uploaded_file.read(CHUNK_SIZE):
-                    f.write(chunk)
-        return True
-    except Exception as e:
-        st.error(f"Failed to save file: {str(e)}")
-        return False
-
-# 6. MAIN APP CODE
-st.title("🚦 Road Safety Scoring System")
-
-# Sidebar for inputs
-with st.sidebar:
-    st.header("📤 Video Input")
-    uploaded_file = st.file_uploader(
-        "Upload Dashcam Video",
-        type=["mp4", "mov", "avi"],
-        help="Upload a video file for safety analysis"
-    )
+def process_video_segments(
+    input_path: str, 
+    output_dir: Path,
+    segment_duration: int = 5
+) -> Tuple[List[Dict], str]:
+    """Process video in segments with enhanced tracking and counting"""
+    # Initialize components
+    tracker = RoadSafetyTracker()
+    visualizer = Visualizer()
+    scorer = SafetyScorer()
     
-    if uploaded_file:
-        # Create timestamped filename to avoid conflicts
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_name = f"video_{timestamp}{Path(uploaded_file.name).suffix}"
-        input_path = RAW_DIR / safe_name
+    # Open video
+    cap = cv2.VideoCapture(input_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30  # Default to 30 if unavailable
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Prepare output video
+    output_path = str(output_dir / "output_annotated.mp4")
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    # Segment processing
+    frames_per_segment = int(fps * segment_duration)
+    current_segment = 1
+    segment_scores = []
+    segment_events = defaultdict(int)
+    frame_count = 0
+    
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
         
-        # Ensure directory exists
-        if not ensure_directory(RAW_DIR):
-            st.stop()
-            
-        # Save file with progress
-        if save_uploaded_file(uploaded_file, input_path):
-            st.success(f"✅ File saved to: {input_path}")
-            
-            # Process button
-            if st.button("🔍 Analyze Video", type="primary", use_container_width=True):
-                with st.spinner("Processing video (this may take several minutes)..."):
-                    if not ensure_directory(OUTPUT_DIR):
-                        st.stop()
-                    
+        # Process frame
+        tracked_objects = tracker.track(frame)
+        _, events = scorer.calculate_frame_score(tracked_objects, width, height, frame_count)
+        
+        # Update segment events
+        for event in events:
+            if "Pedestrian" in event:
+                segment_events["Pedestrian"] += 3
+            elif "Pothole" in event:
+                segment_events["Pothole"] += 2
+            elif "Lane" in event:
+                segment_events["Lane Departure"] += 3
+            elif "Vehicle" in event:
+                segment_events["High Density"] += 2
+        
+        # Segment transition
+        if frame_count > 0 and frame_count % frames_per_segment == 0:
+            segment_score = min(10, max(segment_events.values(), default=0))
+            segment_scores.append({
+                'Segment': current_segment,
+                'Start_Time': (frame_count - frames_per_segment) / fps,
+                'End_Time': frame_count / fps,
+                'Events': dict(segment_events),
+                'Score': segment_score
+            })
+            current_segment += 1
+            segment_events = defaultdict(int)
+        
+        # Visualize
+        frame = visualizer.draw_objects(frame, tracked_objects)
+        frame = visualizer.draw_segment_info(
+            frame, current_segment, segment_duration, segment_events
+        )
+        out.write(frame)
+        frame_count += 1
+    
+    # Handle last segment
+    if segment_events:
+        segment_score = min(10, max(segment_events.values(), default=0))
+        segment_scores.append({
+            'Segment': current_segment,
+            'Start_Time': (frame_count - (frame_count % frames_per_segment)) / fps,
+            'End_Time': frame_count / fps,
+            'Events': dict(segment_events),
+            'Score': segment_score
+        })
+    
+    cap.release()
+    out.release()
+    return segment_scores, output_path
+
+def main():
+    st.title("🚦 Road Safety Scoring System")
+    
+    with st.sidebar:
+        st.header("Settings")
+        uploaded_file = st.file_uploader(
+            "Upload Dashcam Video", 
+            type=["mp4", "mov", "avi"],
+            help="Supported formats: MP4, MOV, AVI"
+        )
+        
+        segment_duration = st.slider(
+            "Segment Duration (seconds)",
+            min_value=1,
+            max_value=10,
+            value=5,
+            help="Duration for each analysis segment"
+        )
+        
+        if st.button("Analyze Video", type="primary", use_container_width=True):
+            if uploaded_file:
+                with st.spinner("Processing video..."):
                     try:
-                        process_video(input_path, OUTPUT_DIR)
-                        st.session_state['processed'] = True
-                        st.session_state['video_path'] = OUTPUT_DIR / "output.mp4"
-                        st.session_state['report_path'] = OUTPUT_DIR / "safety_scores.csv"
-                        st.session_state['log_path'] = OUTPUT_DIR / "detection_log.csv"
-                        st.success("🎉 Analysis complete!")
+                        # Save uploaded file
+                        input_path = str(RAW_DIR / uploaded_file.name)
+                        with open(input_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        # Process video
+                        segment_scores, output_path = process_video_segments(
+                            input_path,
+                            OUTPUT_DIR,
+                            segment_duration
+                        )
+                        
+                        # Save report
+                        report_path = str(OUTPUT_DIR / "segment_report.csv")
+                        pd.DataFrame(segment_scores).to_csv(report_path, index=False)
+                        
+                        # Store results
+                        st.session_state.update({
+                            'processed': True,
+                            'video_path': output_path,
+                            'report_path': report_path,
+                            'segment_scores': segment_scores,
+                            'segment_duration': segment_duration
+                        })
+                        st.success("Analysis complete!")
                     except Exception as e:
                         st.error(f"Processing failed: {str(e)}")
-                        st.error("Check console for detailed error message")
+            else:
+                st.warning("Please upload a video file first")
 
-# Main display area
-if 'processed' in st.session_state and st.session_state['processed']:
-    # Video display
-    st.header("🎥 Processed Video Preview")
-    try:
-        video_file = open(st.session_state['video_path'], 'rb')
-        video_bytes = video_file.read()
-        st.video(video_bytes)
-    except Exception as e:
-        st.error(f"Couldn't load video: {str(e)}")
-
-    # Load data
-    try:
-        report_df = pd.read_csv(st.session_state['report_path'])
-        detection_log = pd.read_csv(st.session_state['log_path'])
-    except Exception as e:
-        st.error(f"Couldn't load results: {str(e)}")
-        st.stop()
-    
-    # Overall metrics - Updated with blue background and white text
-    st.header("📊 Safety Summary")
-    col1, col2, col3 = st.columns(3)
-    
-    avg_score = report_df['score'].mean()
-    if avg_score >= 7:
-        risk_class = "risk-high"
-        risk_level = "High Risk"
-    elif avg_score >= 4:
-        risk_class = "risk-medium"
-        risk_level = "Medium Risk"
-    else:
-        risk_class = "risk-low"
-        risk_level = "Low Risk"
-    
-    with col1:
-        st.markdown(f"""
-        <div class="metric-box">
-            <h3>Average Safety Score</h3>
-            <p><span class="{risk_class}">{avg_score:.1f}/10</span><br>({risk_level})</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        pedestrian_risks = len(detection_log[detection_log['event'].str.contains("Pedestrian", na=False)])
-        st.markdown(f"""
-        <div class="metric-box">
-            <h3>Pedestrian Proximity</h3>
-            <p>{pedestrian_risks} incidents</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        vehicle_density = len(detection_log[detection_log['event'].str.contains("High vehicle density", na=False)])
-        st.markdown(f"""
-        <div class="metric-box">
-            <h3>Vehicle Density</h3>
-            <p>{vehicle_density} incidents</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Score timeline
-    st.header("📈 Safety Score Over Time")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(report_df['start_time'], report_df['score'], marker='o', markersize=3, color='#1E88E5')
-    ax.set_xlabel("Time (seconds)")
-    ax.set_ylabel("Safety Score")
-    ax.set_ylim(0, 10)
-    ax.grid(True, alpha=0.3)
-    st.pyplot(fig)
-    
-    # Detailed detections
-    st.header("📝 Detailed Detection Log")
-    
-    # Filter options
-    col1, col2 = st.columns(2)
-    with col1:
-        risk_filter = st.multiselect(
-            "Filter by risk type",
-            options=["Pedestrian", "Vehicle density", "Pothole", "No risks"],
-            default=["Pedestrian", "Vehicle density", "Pothole"]
+    if 'processed' in st.session_state:
+        # Video Preview
+        st.header("Processed Video Preview")
+        st.video(st.session_state['video_path'])
+        
+        # Safety Summary
+        st.header("Safety Summary")
+        df = pd.DataFrame(st.session_state['segment_scores'])
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            avg_score = df['Score'].mean()
+            risk_level = "High" if avg_score >=7 else "Medium" if avg_score >=4 else "Low"
+            st.markdown(f"""
+            <div class="metric-box">
+                <h3>Average Score</h3>
+                <p><span class="risk-{risk_level.lower()}">{avg_score:.1f}/10</span><br>({risk_level} Risk)</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            total_peds = sum(seg['Events'].get('Pedestrian', 0) for seg in st.session_state['segment_scores'])
+            st.markdown(f"""
+            <div class="metric-box">
+                <h3>Pedestrian Events</h3>
+                <p>{total_peds} incidents</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            total_vehicles = sum(seg['Events'].get('High Density', 0) for seg in st.session_state['segment_scores'])
+            st.markdown(f"""
+            <div class="metric-box">
+                <h3>Vehicle Density Events</h3>
+                <p>{total_vehicles} incidents</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Segment Analysis
+        st.header("Segment Analysis")
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.plot(
+            df['Segment'], 
+            df['Score'], 
+            marker='o', 
+            color='#1E88E5',
+            linewidth=2
         )
-    
-    with col2:
-        score_range = st.slider(
-            "Filter by score range",
-            0, 10, (0, 10)
+        ax.set_xlabel(f"Segment Number ({st.session_state['segment_duration']}s each)")
+        ax.set_ylabel("Safety Score (0-10)")
+        ax.set_ylim(0, 10)
+        ax.grid(True, alpha=0.3)
+        st.pyplot(fig)
+        
+        # Detailed Data
+        st.header("Detailed Segment Data")
+        st.dataframe(
+            df,
+            column_config={
+                "Segment": "Segment #",
+                "Start_Time": st.column_config.NumberColumn("Start Time (s)", format="%.1f"),
+                "End_Time": st.column_config.NumberColumn("End Time (s)", format="%.1f"),
+                "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=10),
+                "Events": "Detected Events"
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=500
         )
-    
-    # Apply filters
-    filtered_log = detection_log.copy()
-    if risk_filter:
-        condition = False
-        if "Pedestrian" in risk_filter:
-            condition |= filtered_log['event'].str.contains("Pedestrian", na=False)
-        if "Vehicle density" in risk_filter:
-            condition |= filtered_log['event'].str.contains("High vehicle density", na=False)
-        if "Pothole" in risk_filter:
-            condition |= filtered_log['event'].str.contains("Pothole", na=False)
-        if "No risks" in risk_filter:
-            condition |= filtered_log['event'].str.contains("No risks", na=False)
-        filtered_log = filtered_log[condition]
-    
-    filtered_log = filtered_log[
-        (filtered_log['score'] >= score_range[0]) & 
-        (filtered_log['score'] <= score_range[1])
-    ]
-    
-    # Show filtered data
-    st.dataframe(
-        filtered_log,
-        column_config={
-            "frame_number": "Frame #",
-            "event": "Risk Event",
-            "score": st.column_config.ProgressColumn(
-                "Score",
-                help="Safety score for this event",
-                format="%.1f",
-                min_value=0,
-                max_value=10,
-            ),
-            "timestamp": st.column_config.NumberColumn("Timestamp (s)", format="%.1f")
-        },
-        hide_index=True,
-        use_container_width=True,
-        height=500
-    )
-    
-    # Download section
-    st.header("💾 Download Results")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        try:
+        
+        # Download Section
+        st.header("Download Results")
+        col1, col2 = st.columns(2)
+        with col1:
             with open(st.session_state['video_path'], "rb") as f:
                 st.download_button(
                     "📹 Download Processed Video",
                     f,
                     file_name="safety_processed.mp4",
-                    help="Download the annotated video with safety scores",
+                    help="Video with safety annotations",
                     use_container_width=True
                 )
-        except Exception as e:
-            st.error(f"Couldn't prepare video download: {str(e)}")
-    
-    with col2:
-        try:
+        with col2:
             with open(st.session_state['report_path'], "rb") as f:
                 st.download_button(
-                    "📊 Download Score Report",
+                    "📊 Download Analysis Report",
                     f,
-                    file_name="safety_scores.csv",
-                    help="Download the detailed score timeline",
+                    file_name="safety_report.csv",
+                    help="Detailed segment analysis data",
                     use_container_width=True
                 )
-        except Exception as e:
-            st.error(f"Couldn't prepare report download: {str(e)}")
-    
-    with col3:
-        try:
-            with open(st.session_state['log_path'], "rb") as f:
-                st.download_button(
-                    "📋 Download Detection Log",
-                    f,
-                    file_name="detection_log.csv",
-                    help="Download the complete detection log",
-                    use_container_width=True
-                )
-        except Exception as e:
-            st.error(f"Couldn't prepare log download: {str(e)}")
+    else:
+        st.info("Please upload a video and click 'Analyze Video' to begin")
 
-elif uploaded_file and 'processed' not in st.session_state:
-    st.info("ℹ️ Click 'Analyze Video' to process the uploaded file")
-else:
-    st.info("ℹ️ Please upload a dashcam video to begin analysis")
+if __name__ == "__main__":
+    try:
+        # Windows-specific event loop fix
+        if sys.platform == "win32":
+            asyncio.set_event_loop(asyncio.ProactorEventLoop())
+        
+        main()
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
+        st.stop()

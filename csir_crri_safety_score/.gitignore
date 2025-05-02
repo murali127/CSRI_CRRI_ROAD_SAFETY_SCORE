@@ -1,0 +1,23 @@
+# Ignore all outputs (processed videos, reports, CSVs, images)
+data/outputs/
+data/frames/
+data/processed/
+data/processed_images/
+data/processed_videos/
+data/raw
+# Ignore YOLO weight files (if not versioning them)
+models/yolo/*.pt
+
+# Ignore logs or debug outputs
+*.log
+*.csv
+*.json
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Streamlit cache
+.streamlit/config.toml
+__pycache__/
+*.pyc
