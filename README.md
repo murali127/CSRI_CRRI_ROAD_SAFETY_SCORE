@@ -1,7 +1,6 @@
 📘 README.md – CSIR-CRRI Road Safety Scoring System
 markdown
-Copy
-Edit
+
 # 🚗 CSIR-CRRI Road Safety Scoring System
 
 A smart computer vision system that analyzes dashcam videos and assigns a **road safety score (0–10)** to each road segment based on real-time object detection and event risk factors. Developed for the CSIR-CRRI initiative.
@@ -195,9 +194,28 @@ Pull requests are welcome! Please:
 
 ---
 
-## 🧾 License
+# Contributors 🙋🏽
 
-MIT License © 2025 Murali Paila
+<p align="center">
+  <a href="https://github.com/VIZAGBOYS/CSRI_CRRI_ROAD_SAFETY_SCORE">
+    <img src="https://img.shields.io/badge/GitHub-CSRI_CRRI_ROAD_SAFETY_SCORE-blue?logo=github" alt="Repo Badge" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/VIZAGBOYS/CSRI_CRRI_ROAD_SAFETY_SCORE/graphs/contributors">
+    <img src="https://api.vaunt.dev/v1/github/entities/VIZAGBOYS/repositories/CSRI_CRRI_ROAD_SAFETY_SCORE/contributors?format=svg&limit=100" width="700" height="250" />
+  </a>
+</p>
+
+
+<br>
+  
+## Thank you for contributing 💗 
+We truly appreciate your time and effort to help improve our project. Happy coding! 🚀
+
+Thankyou
+
 
 ---
 
@@ -206,5 +224,9 @@ MIT License © 2025 Murali Paila
 * CSIR-CRRI for the problem statement and research inspiration
 * Ultralytics for the YOLOv8 model
 * OpenCV, Streamlit, and the open-source community ❤️
+
+## 🧾 License
+
+MIT License © 2025 Murali Paila
 
 ---
