@@ -54,7 +54,7 @@ csir_crri_safety_score/
 │
 ├── utils/
 │   ├── video_utils.py     # Frame extraction, in-memory processing, overlays
-│   └── config.py          # Risk event weights and thresholds
+│   └── visualizer.py          # Risk event weights and thresholds
 │
 ├── app/
 │   └── streamlit_app.py   # Streamlit UI for dashboard and video upload
