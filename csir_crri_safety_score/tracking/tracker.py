@@ -151,8 +151,8 @@ class RoadSafetyTracker:
             
             # Add to tracked objects
             tracked_objects.append({
-                'track_id': track_id,
-                'class_name': class_name,
+                'track_id': track_id,  # Keep track_id internally for logic but don't display it
+                'class_name': class_name,  # Only display class_name
                 'bbox': [int(x) for x in bbox],
                 'is_new': is_new,
                 'velocity': velocity,

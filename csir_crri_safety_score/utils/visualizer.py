@@ -71,8 +71,8 @@ class Visualizer:
                          (bbox[2], bbox[3]), 
                          color, 2)
             
-            # Create label with class name and ID
-            label = f"{class_name} #{obj['track_id']}"
+            # Create label with class name only
+            label = f"{class_name}"
             
             # Add 'NEW' flag if this is a new detection
             if obj.get('is_new', False):
@@ -234,3 +234,20 @@ class Visualizer:
         # This would be implemented for visual risk zones
         # Not currently used in the main system
         pass
+
+    def draw_labels(self, frame, class_name, x, y):
+        """
+        Draw labels on the frame
+        
+        Args:
+            frame: Image to draw on
+            class_name: Name of the class
+            x: X coordinate for the label
+            y: Y coordinate for the label
+            
+        Returns:
+            Frame with labels
+        """
+        label = f"{class_name}"  # Only display the class name
+        cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        return frame
