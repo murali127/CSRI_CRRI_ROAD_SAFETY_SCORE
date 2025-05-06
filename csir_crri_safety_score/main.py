@@ -1,8 +1,8 @@
-import argparse
-import os
-import time
+from pathlib import Path
 import cv2
-import pandas as pd
+import os
+import sys
+from typing import Dict, List
 from tracking.tracker import RoadSafetyTracker
 from scoring.scorer import SafetyScorer
 from utils.visualizer import Visualizer
@@ -17,20 +17,29 @@ class bcolors:
     FAIL = '\033[91m'
     ENDC = '\033[0m'
 
-def process_video(input_path, output_dir, segment_duration=5):
-    """Process video in segments with enhanced scoring and preview"""
+def process_video(input_path: str, output_dir: str, segment_duration: int = 5) -> List[Dict]:
+    """Process video in segments with enhanced scoring and preview
+    
+    Args:
+        input_path: Path to input video file
+        output_dir: Directory to save outputs
+        segment_duration: Duration of each segment in seconds
+        
+    Returns:
+        List of segment scores with metadata
+    """
     os.makedirs(output_dir, exist_ok=True)
     
     # Initialize components
     tracker = RoadSafetyTracker()
+    scorer = SafetyScorer()
     visualizer = Visualizer()
     
     # Open video file
     cap = cv2.VideoCapture(input_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps <= 0:
-        fps = 30  # Default value
-        print(f"{bcolors.WARNING}Warning: Using default FPS: {fps}{bcolors.ENDC}")
+        raise ValueError("Invalid video FPS")
     
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -39,18 +48,14 @@ def process_video(input_path, output_dir, segment_duration=5):
     output_path = os.path.join(output_dir, 'output_annotated.mp4')
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
-    
-    # Segment processing variables
+
+    # Process frames
     frames_per_segment = int(fps * segment_duration)
     current_segment = 1
-    segment_data = []
     segment_events = defaultdict(int)
     frame_count = 0
     segment_scores = []
     
-    print(f"{bcolors.HEADER}\nProcessing video in {segment_duration}-second segments...{bcolors.ENDC}")
-    start_time = time.time()
-
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -58,120 +63,94 @@ def process_video(input_path, output_dir, segment_duration=5):
             
         # Process frame
         tracked_objects = tracker.track(frame)
+        frame_events = scorer.calculate_frame_score(
+            tracked_objects, frame_width, frame_height, frame_count
+        )
         
-        # Segment scoring logic
-        if frame_count % frames_per_segment == 0 and frame_count > 0:
-            # Calculate segment score (using max event score in segment)
+        # Update segment events
+        for event in frame_events:
+            segment_events[event] += 1
+            
+        # Visualize frame
+        frame = visualizer.draw_segment_info(
+            frame, current_segment, segment_duration, dict(segment_events)
+        )
+        
+        # Handle segment transition
+        if frame_count > 0 and frame_count % frames_per_segment == 0:
             segment_score = min(10, max(segment_events.values(), default=0))
             segment_scores.append({
                 'Segment': current_segment,
-                'Start_Frame': frame_count - frames_per_segment,
-                'End_Frame': frame_count - 1,
-                'Events': ", ".join([f"{k}×{v}" for k,v in segment_events.items()]),
+                'Start_Time': (frame_count - frames_per_segment) / fps,
+                'End_Time': frame_count / fps,
+                'Events': dict(segment_events),
                 'Score': segment_score
             })
-            
-            # Reset for next segment
             current_segment += 1
-            segment_events = defaultdict(int)
-        
-        # Score current frame (returns events and their weights)
-        _, events = SafetyScorer().calculate_frame_score(
-            tracked_objects, 
-            frame_width, 
-            frame_height, 
-            frame_count
-        )
-        
-        # Aggregate events for segment
-        for event in events:
-            if "Pedestrian" in event:
-                segment_events["Pedestrian"] += 3
-            elif "Pothole" in event:
-                segment_events["Pothole"] += 2
-            elif "Lane" in event:
-                segment_events["Lane Departure"] += 3
-            elif "Vehicle" in event:
-                segment_events["High Density"] += 2
-        
-        # Visualize with segment info
-        frame = visualizer.draw_objects(frame, tracked_objects)
-        frame = visualizer.draw_segment_info(
-            frame,
-            current_segment,
-            segment_duration,
-            segment_events
-        )
-        
-        # Write to output video
+            segment_events.clear()
+            
         out.write(frame)
-        
         frame_count += 1
-        if frame_count % 100 == 0:
-            elapsed = time.time() - start_time
-            print(f"{bcolors.OKBLUE}Processed {frame_count} frames ({elapsed:.2f}s elapsed){bcolors.ENDC}")
-    
+        
+        # Print progress
+        if frame_count % 30 == 0:
+            print(f"\rProcessing frame {frame_count}", end="")
+            
     # Handle last segment
     if segment_events:
         segment_score = min(10, max(segment_events.values(), default=0))
         segment_scores.append({
             'Segment': current_segment,
-            'Start_Frame': frame_count - (frame_count % frames_per_segment),
-            'End_Frame': frame_count - 1,
-            'Events': ", ".join([f"{k}×{v}" for k,v in segment_events.items()]),
+            'Start_Time': (frame_count - (frame_count % frames_per_segment)) / fps,
+            'End_Time': frame_count / fps,
+            'Events': dict(segment_events),
             'Score': segment_score
         })
     
-    # Clean up
     cap.release()
     out.release()
+    print(f"\n{bcolors.OKGREEN}Processing complete!{bcolors.ENDC}")
     
-    # Save reports
-    save_segment_report(segment_scores, output_dir)
-    save_visualization(segment_scores, output_dir, segment_duration)
-    
-    print(f"{bcolors.HEADER}\n=== Processing Complete ==={bcolors.ENDC}")
-    print(f"{bcolors.OKGREEN}Results saved to {output_dir}{bcolors.ENDC}")
-    print(f"{bcolors.OKGREEN}Segment scores saved to {os.path.join(output_dir, 'segment_scores.csv')}{bcolors.ENDC}")
+    return segment_scores
 
-    return segment_scores, os.path.abspath(output_path)
-
-def save_segment_report(segment_scores, output_dir):
-    """Save segment scores to CSV"""
+def save_segment_report(segment_scores: List[Dict], output_dir: str) -> None:
+    """Save segment analysis to CSV"""
+    import pandas as pd
     df = pd.DataFrame(segment_scores)
-    report_path = os.path.join(output_dir, 'segment_scores.csv')
-    df.to_csv(report_path, index=False)
+    output_path = os.path.join(output_dir, 'segment_report.csv')
+    df.to_csv(output_path, index=False)
+    print(f"{bcolors.OKBLUE}Saved report to: {output_path}{bcolors.ENDC}")
 
-def save_visualization(segment_scores, output_dir, segment_duration):
-    """Generate and save visualization of segment scores"""
+def save_visualization(segment_scores: List[Dict], output_dir: str, segment_duration: int) -> None:
+    """Generate and save visualization plots"""
     import matplotlib.pyplot as plt
     
+    scores = [s['Score'] for s in segment_scores]
+    segments = [s['Segment'] for s in segment_scores]
+    
     plt.figure(figsize=(12, 6))
-    segments = [f"Seg {x['Segment']}" for x in segment_scores]
-    scores = [x['Score'] for x in segment_scores]
+    plt.plot(segments, scores, marker='o', linewidth=2)
+    plt.xlabel(f"Segment Number ({segment_duration}s each)")
+    plt.ylabel("Safety Score (0-10)")
+    plt.grid(True, alpha=0.3)
     
-    bars = plt.bar(segments, scores, color=['red' if s >= 7 else 'orange' if s >=4 else 'green' for s in scores])
-    plt.xlabel(f'Segments ({segment_duration} seconds each)')
-    plt.ylabel('Safety Score (0-10)')
-    plt.title('Road Safety Segment Scores')
-    plt.ylim(0, 10)
-    
-    # Add value labels
-    for bar in bars:
-        height = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height:.1f}',
-                ha='center', va='bottom')
-    
-    plot_path = os.path.join(output_dir, 'segment_scores.png')
-    plt.savefig(plot_path)
-    plt.close()
+    output_path = os.path.join(output_dir, 'safety_visualization.png')
+    plt.savefig(output_path)
+    print(f"{bcolors.OKBLUE}Saved visualization to: {output_path}{bcolors.ENDC}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Road Safety Scoring System")
-    parser.add_argument('--input', type=str, required=True, help="Path to input video file")
-    parser.add_argument('--output', type=str, default='data/outputs', help="Output directory")
-    parser.add_argument('--segment', type=int, default=5, help="Segment duration in seconds (default: 5)")
+    if len(sys.argv) < 2:
+        print(f"{bcolors.FAIL}Usage: python main.py <video_path> [segment_duration]{bcolors.ENDC}")
+        sys.exit(1)
+        
+    input_path = sys.argv[1]
+    segment_duration = int(sys.argv[2]) if len(sys.argv) > 2 else 5
+    output_dir = "output"
     
-    args = parser.parse_args()
-    process_video(args.input, args.output, args.segment)
+    try:
+        segment_scores = process_video(input_path, output_dir, segment_duration)
+        save_segment_report(segment_scores, output_dir)
+        save_visualization(segment_scores, output_dir, segment_duration)
+    except Exception as e:
+        print(f"{bcolors.FAIL}Error: {str(e)}{bcolors.ENDC}")
+        sys.exit(1)

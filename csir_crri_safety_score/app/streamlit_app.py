@@ -1,4 +1,4 @@
-# COMPLETE ERROR-FREE STREAMLIT APP
+# COMPLETE ERROR-FREE STREAMLIT APP WITH IMPROVEMENTS
 
 # 1. CRITICAL FIXES AT THE TOP
 import asyncio
@@ -44,6 +44,7 @@ try:
     from tracking.tracker import RoadSafetyTracker
     from scoring.scorer import SafetyScorer
     from utils.visualizer import Visualizer
+    from utils.video_utils import extract_frames, create_video_from_frames
     
     # Additional Torch fixes
     import torch
@@ -85,6 +86,12 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
+    .live-preview {
+        border: 2px solid #1E88E5;
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 20px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -93,7 +100,7 @@ def process_video_segments(
     output_dir: Path,
     segment_duration: int = 5
 ) -> Tuple[List[Dict], str]:
-    """Process video in segments with enhanced tracking and counting"""
+    """Process video in segments with per-object tracking"""
     # Initialize components
     tracker = RoadSafetyTracker()
     visualizer = Visualizer()
@@ -117,16 +124,24 @@ def process_video_segments(
     segment_events = defaultdict(int)
     frame_count = 0
     
+    # Live preview placeholder
+    preview_placeholder = st.empty()
+    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
         
-        # Process frame
-        tracked_objects = tracker.track(frame)
-        _, events = scorer.calculate_frame_score(tracked_objects, width, height, frame_count)
+        # Process frame (with segment transition flag)
+        segment_transition = (frame_count > 0 and frame_count % frames_per_segment == 0)
+        tracked_objects = tracker.track(frame, segment_transition)
+        score, events = scorer.calculate_frame_score(tracked_objects, width, height, frame_count)
         
-        # Update segment events
+        # Update visualizer segment
+        if segment_transition:
+            visualizer.update_segment(tracker.current_segment)
+        
+        # Update segment events (only count new objects)
         for event in events:
             if "Pedestrian" in event:
                 segment_events["Pedestrian"] += 3
@@ -137,8 +152,8 @@ def process_video_segments(
             elif "Vehicle" in event:
                 segment_events["High Density"] += 2
         
-        # Segment transition
-        if frame_count > 0 and frame_count % frames_per_segment == 0:
+        # Segment transition logic
+        if segment_transition:
             segment_score = min(10, max(segment_events.values(), default=0))
             segment_scores.append({
                 'Segment': current_segment,
@@ -150,12 +165,18 @@ def process_video_segments(
             current_segment += 1
             segment_events = defaultdict(int)
         
-        # Visualize
+        # Visualize with enhanced overlays
         frame = visualizer.draw_objects(frame, tracked_objects)
         frame = visualizer.draw_segment_info(
             frame, current_segment, segment_duration, segment_events
         )
         out.write(frame)
+        
+        # Update live preview every 50 frames
+        if frame_count % 50 == 0:
+            preview_placeholder.image(frame, channels="BGR", 
+                                   caption=f"Live Preview | Segment {current_segment} | Frame {frame_count}")
+        
         frame_count += 1
     
     # Handle last segment
@@ -198,15 +219,18 @@ def main():
                     try:
                         # Save uploaded file
                         input_path = str(RAW_DIR / uploaded_file.name)
+                        output_dir = OUTPUT_DIR
+                        output_dir.mkdir(parents=True, exist_ok=True)
                         with open(input_path, "wb") as f:
                             f.write(uploaded_file.getbuffer())
                         
-                        # Process video
-                        segment_scores, output_path = process_video_segments(
-                            input_path,
-                            OUTPUT_DIR,
-                            segment_duration
-                        )
+                        # Process video with live preview
+                        with st.expander("Live Processing Preview", expanded=True):
+                            segment_scores, output_path = process_video_segments(
+                                input_path,
+                                OUTPUT_DIR,
+                                segment_duration
+                            )
                         
                         # Save report
                         report_path = str(OUTPUT_DIR / "segment_report.csv")
@@ -289,7 +313,8 @@ def main():
                 "Start_Time": st.column_config.NumberColumn("Start Time (s)", format="%.1f"),
                 "End_Time": st.column_config.NumberColumn("End Time (s)", format="%.1f"),
                 "Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=10),
-                "Events": "Detected Events"
+                "Events": st.column_config.Column("Detected Events", 
+                                               help="Counts of risk events per segment")
             },
             hide_index=True,
             use_container_width=True,
