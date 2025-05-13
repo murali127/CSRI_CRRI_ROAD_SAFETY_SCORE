@@ -52,6 +52,13 @@ class RoadSafetyDetector:
             'road_sign', 'accident', 'traffic_cone', 'roadwork', 'pedestrian_crossing'
         ]
 
+        # Add specialized accident detector (optional)
+        try:
+            self.accident_model = YOLO("accident_model.pt") if os.path.exists("accident_model.pt") else None
+        except Exception as e:
+            print(f"Warning: Could not load accident model: {e}")
+            self.accident_model = None
+
     def detect(self, frame):
         """
         Detect objects in a frame
@@ -91,7 +98,23 @@ class RoadSafetyDetector:
                             'confidence': conf,
                             'bbox': [x1, y1, x2, y2]
                         })
-            
+        
+        # Add specialized accident detection with higher confidence
+        if self.accident_model:
+            accident_results = self.accident_model(frame, verbose=False)
+            if accident_results and len(accident_results) > 0:
+                accident_result = accident_results[0]
+                if hasattr(accident_result.boxes, 'cpu'):
+                    boxes = accident_result.boxes.cpu().numpy()
+                    for box in boxes:
+                        if box.conf > 0.6:  # Higher threshold for accidents
+                            x1, y1, x2, y2 = map(int, box.xyxy[0])
+                            detections.append({
+                                'class_name': 'accident',
+                                'confidence': float(box.conf),
+                                'bbox': [x1, y1, x2, y2]
+                            })
+        
         return detections
 
     def detect_with_nms(self, frame, conf_threshold=0.35, iou_threshold=0.5):

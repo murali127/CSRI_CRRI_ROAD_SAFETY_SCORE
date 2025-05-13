@@ -54,6 +54,7 @@ class Visualizer:
         """
         # Count objects per class (for statistics)
         class_counts = defaultdict(int)
+        accident_detected = False
         for obj in tracked_objects:
             class_counts[obj['class_name']] += 1
 
@@ -108,6 +109,28 @@ class Visualizer:
                 (0, 0, 0),  # Black text
                 self.font_thickness
             )
+            
+            # Special handling for accidents
+            if obj['class_name'] == 'accident':
+                accident_detected = True
+                # Draw thicker box with warning stripes
+                cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 4)
+                
+                # Add warning text
+                warning_text = "⚠️ ACCIDENT DETECTED ⚠️"
+                text_size = cv2.getTextSize(warning_text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)[0]
+                cv2.putText(frame, warning_text, 
+                           (frame.shape[1]//2 - text_size[0]//2, 50),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+        
+        # Add flashing border if accident detected
+        if accident_detected:
+            # Create red border
+            border_thickness = 20
+            frame[:border_thickness, :] = [0, 0, 255]  # Top
+            frame[-border_thickness:, :] = [0, 0, 255]  # Bottom
+            frame[:, :border_thickness] = [0, 0, 255]  # Left
+            frame[:, -border_thickness:] = [0, 0, 255]  # Right
         
         # Draw object counts in top-left corner
         y_offset = 30

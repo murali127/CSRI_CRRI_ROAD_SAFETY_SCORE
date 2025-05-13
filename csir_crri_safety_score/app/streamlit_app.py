@@ -127,6 +127,9 @@ def process_video_segments(
     # Live preview placeholder
     preview_placeholder = st.empty()
     
+    # Add accident log
+    accident_log = []
+    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -165,6 +168,21 @@ def process_video_segments(
             current_segment += 1
             segment_events = defaultdict(int)
         
+        # Check for accident events specifically
+        accident_events = [e for e in events if "Accident" in e]
+        if accident_events:
+            segment_events["Accident"] += 10  # Highest weight
+            # Force segment score to maximum for accidents
+            segment_score = 10
+            for event in events:
+                if "Accident" in event:
+                    accident_timestamp = frame_count / fps
+                    accident_log.append({
+                        'Timestamp': accident_timestamp,
+                        'Frame': frame_count,
+                        'Event': event
+                    })
+
         # Visualize with enhanced overlays
         frame = visualizer.draw_objects(frame, tracked_objects)
         frame = visualizer.draw_segment_info(
@@ -192,6 +210,13 @@ def process_video_segments(
     
     cap.release()
     out.release()
+    
+    # After processing, save accident log if any accidents detected
+    if accident_log:
+        accident_path = str(output_dir / "accident_log.csv")
+        pd.DataFrame(accident_log).to_csv(accident_path, index=False)
+        st.session_state['accident_path'] = accident_path
+    
     return segment_scores, output_path
 
 def main():
@@ -288,6 +313,19 @@ def main():
             </div>
             """, unsafe_allow_html=True)
         
+        # Add accident summary
+        total_accidents = sum(1 for seg in st.session_state['segment_scores'] 
+                              if 'Accident' in seg['Events'] and seg['Events']['Accident'] > 0)
+        
+        if total_accidents > 0:
+            st.error(f"⚠️ CRITICAL: {total_accidents} accident events detected! Immediate attention required.")
+            
+            # Find accident segments
+            accident_segments = [seg['Segment'] for seg in st.session_state['segment_scores'] 
+                                if 'Accident' in seg['Events'] and seg['Events']['Accident'] > 0]
+            
+            st.warning(f"Accidents detected in segments: {', '.join(map(str, accident_segments))}")
+        
         # Segment Analysis
         st.header("Segment Analysis")
         fig, ax = plt.subplots(figsize=(12, 6))
@@ -340,6 +378,15 @@ def main():
                     f,
                     file_name="safety_report.csv",
                     help="Detailed segment analysis data",
+                    use_container_width=True
+                )
+        if 'accident_path' in st.session_state:
+            with open(st.session_state['accident_path'], "rb") as f:
+                st.download_button(
+                    "⚠️ Download Accident Report",
+                    f,
+                    file_name="accident_report.csv",
+                    help="Detailed accident timestamp data",
                     use_container_width=True
                 )
     else:

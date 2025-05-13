@@ -32,10 +32,22 @@ class SafetyScorer:
         self.historical_events = defaultdict(list)
         self.max_history = 30  # frames
         
+        # Add accident to high risk events
+        self.high_risk_event_weight = 10  # Highest possible score impact
+        
     def calculate_frame_score(self, tracked_objects, frame_width, frame_height, frame_number):
         """Calculate safety score for current frame based on detected objects"""
         score = 0
         frame_events = []
+        
+        # Add accident detection logic
+        events = []
+        for obj in tracked_objects:
+            # Check for accident detection
+            if obj['class_name'] == 'accident':
+                events.append(f"CRITICAL: Accident detected at frame {frame_number}")
+                # Immediately assign maximum risk score for accidents
+                return self.high_risk_event_weight, events
         
         # Classify objects by type
         vehicles = []
