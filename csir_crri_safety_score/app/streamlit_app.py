@@ -92,6 +92,29 @@ st.markdown("""
         padding: 10px;
         margin-bottom: 20px;
     }
+    /* Make the live preview much larger */
+    .live-preview {
+        width: 100%;
+        height: auto;
+        border: 2px solid #1E88E5;
+        border-radius: 10px;
+        padding: 5px;
+        margin-bottom: 20px;
+    }
+    
+    /* Make Streamlit's video player larger */
+    .stVideo {
+        width: 100% !important;
+        height: auto !important;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    /* Hide download button in video player */
+    .stVideo > div > div > div > a {
+        display: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -125,7 +148,9 @@ def process_video_segments(
     frame_count = 0
     
     # Live preview placeholder
+    st.markdown("<div class='live-preview'>", unsafe_allow_html=True)
     preview_placeholder = st.empty()
+    st.markdown("</div>", unsafe_allow_html=True)
     
     # Add accident log
     accident_log = []
@@ -190,10 +215,15 @@ def process_video_segments(
         )
         out.write(frame)
         
-        # Update live preview every 50 frames
-        if frame_count % 50 == 0:
-            preview_placeholder.image(frame, channels="BGR", 
-                                   caption=f"Live Preview | Segment {current_segment} | Frame {frame_count}")
+        # Update live preview every 10 frames
+        if frame_count % 10 == 0:
+            preview_frame = cv2.resize(frame, (0, 0), fx=1.0, fy=1.0)  # Keep full size
+            preview_placeholder.image(
+                preview_frame, 
+                channels="BGR",
+                use_container_width=True,  # Changed from use_column_width
+                caption=f"Live Processing | Segment {current_segment} | Frame {frame_count}"
+            )
         
         frame_count += 1
     
@@ -275,14 +305,41 @@ def main():
             else:
                 st.warning("Please upload a video file first")
 
-    if 'processed' in st.session_state:
-        # Video Preview
-        st.header("Processed Video Preview")
-        st.video(st.session_state['video_path'])
+    # Check if processing is complete
+    if 'processed' in st.session_state and st.session_state['processed']:
+        # Create DataFrame at the beginning
+        df = pd.DataFrame(st.session_state['segment_scores'])
+        
+        # 1. VIDEO SECTION
+        st.header("Processed Video")
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            # Display video in large format
+            st.video(
+                st.session_state['video_path'],
+                start_time=0
+            )
+        
+        with col2:
+            # Display quick summary beside the video
+            avg_score = df['Score'].mean()
+            risk_level = "High" if avg_score >=7 else "Medium" if avg_score >=4 else "Low"
+            st.markdown(f"""
+            <div class="metric-box">
+                <h3>Overall Risk</h3>
+                <p><span class="risk-{risk_level.lower()}">{avg_score:.1f}/10</span><br>({risk_level} Risk)</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Add accident indicator if any
+            total_accidents = sum(1 for seg in st.session_state['segment_scores'] 
+                                 if 'Accident' in seg['Events'] and seg['Events']['Accident'] > 0)
+            if total_accidents > 0:
+                st.error(f"⚠️ {total_accidents} accident(s) detected!")
         
         # Safety Summary
         st.header("Safety Summary")
-        df = pd.DataFrame(st.session_state['segment_scores'])
         
         col1, col2, col3 = st.columns(3)
         with col1:
