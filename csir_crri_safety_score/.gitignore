@@ -6,7 +6,7 @@ data/processed_images/
 data/processed_videos/
 data/raw
 # Ignore YOLO weight files (if not versioning them)
-models/yolo/*.pt
+
 
 # Ignore logs or debug outputs
 *.log
