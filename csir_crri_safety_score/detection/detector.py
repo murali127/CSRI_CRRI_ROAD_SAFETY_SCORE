@@ -42,14 +42,23 @@ class RoadSafetyDetector:
             84: 'accident',
             85: 'traffic_cone',
             86: 'roadwork',
-            87: 'pedestrian_crossing'
+            87: 'pedestrian_crossing',
+            # Specific road signs
+            90: 'speed_limit',
+            91: 'no_entry',
+            92: 'yield',
+            93: 'no_parking',
+            94: 'warning',
+            95: 'direction',
+            96: 'regulatory'
         }
         
         # Define which classes to detect (filter others)
         self.target_classes = [
             'person', 'bicycle', 'car', 'motorcycle', 'bus', 'truck',
             'traffic light', 'stop sign', 'pothole', 'crack', 'speed_bump',
-            'road_sign', 'accident', 'traffic_cone', 'roadwork', 'pedestrian_crossing'
+            'road_sign', 'accident', 'traffic_cone', 'roadwork', 'pedestrian_crossing',
+            'speed_limit', 'no_entry', 'yield', 'no_parking', 'warning', 'direction', 'regulatory'
         ]
 
         # Add specialized accident detector (optional)
@@ -58,6 +67,13 @@ class RoadSafetyDetector:
         except Exception as e:
             print(f"Warning: Could not load accident model: {e}")
             self.accident_model = None
+            
+        # Add specialized road sign detector
+        try:
+            self.road_sign_model = YOLO("road_signs_model.pt") if os.path.exists("road_signs_model.pt") else None
+        except Exception as e:
+            print(f"Warning: Could not load road sign model: {e}")
+            self.road_sign_model = None
 
     def detect(self, frame):
         """
@@ -111,6 +127,38 @@ class RoadSafetyDetector:
                             x1, y1, x2, y2 = map(int, box.xyxy[0])
                             detections.append({
                                 'class_name': 'accident',
+                                'confidence': float(box.conf),
+                                'bbox': [x1, y1, x2, y2]
+                            })
+        
+        # Add specialized road sign detection
+        if self.road_sign_model:
+            sign_results = self.road_sign_model(frame, verbose=False)
+            if sign_results and len(sign_results) > 0:
+                sign_result = sign_results[0]
+                if hasattr(sign_result.boxes, 'cpu'):
+                    boxes = sign_result.boxes.cpu().numpy()
+                    for box in boxes:
+                        if box.conf > 0.5:  # Threshold for road signs
+                            x1, y1, x2, y2 = map(int, box.xyxy[0])
+                            cls_id = int(box.cls[0])
+                            
+                            # Get specific road sign type
+                            if cls_id == 0:
+                                sign_type = 'speed_limit'
+                            elif cls_id == 1:
+                                sign_type = 'stop_sign'
+                            elif cls_id == 2:
+                                sign_type = 'yield'
+                            elif cls_id == 3:
+                                sign_type = 'no_entry'
+                            elif cls_id == 4:
+                                sign_type = 'warning'
+                            else:
+                                sign_type = 'road_sign'  # Generic name if not recognized
+                                
+                            detections.append({
+                                'class_name': sign_type,
                                 'confidence': float(box.conf),
                                 'bbox': [x1, y1, x2, y2]
                             })
