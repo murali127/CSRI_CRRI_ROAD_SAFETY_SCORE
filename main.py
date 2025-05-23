@@ -2,19 +2,20 @@ import cv2
 import time
 import logging
 logger = logging.getLogger(__name__)
-from typing import Optional
+from typing import Optional, Dict, List
 from pathlib import Path
 from detectors.yolox_inference import YOLOXDetector
 from trackers.bytetrack import BYTETracker
-from scoring.safety_score import compute_safety_score, analyze_frame_detections, generate_report
+from scoring.safety_score import compute_safety_score, analyze_frame_detections, generate_segment_report
 from utils.video_utils import read_video, get_video_properties, initialize_video_writer, draw_objects, draw_safety_score
 from utils.config import create_roi_mask
 
 class RoadSafetyScorer:
-    def __init__(self, model_path: str = "yolox_s.pth", device: str = "cuda"):
+    def __init__(self, model_path: str = "yolox_s.pth", device: str = "cuda", segment_size: float = 5.0):
         self.detector = YOLOXDetector(model_path, device)
         self.tracker = BYTETracker()
         self.frame_stats = []
+        self.segment_size = segment_size  # Segment size in seconds
     
     def process_video(self, input_path: str, output_path: str) -> dict:
         """Process video and generate safety analysis"""
@@ -28,6 +29,7 @@ class RoadSafetyScorer:
         
         logger.info(f"Processing video: {input_path}")
         logger.info(f"Resolution: {width}x{height}, Frames: {frame_count}, FPS: {fps}")
+        logger.info(f"Using segment size: {self.segment_size} seconds")
         
         frame_idx = 0
         start_time = time.time()
@@ -77,18 +79,14 @@ class RoadSafetyScorer:
         processing_time = time.time() - start_time
         logger.info(f"Finished processing in {processing_time:.2f} seconds")
         
-        # Generate report
-        report = generate_report(self.frame_stats)
+        # Generate segment-based report
+        report = generate_segment_report(self.frame_stats, fps, self.segment_size)
         avg_score = report['score'].mean()
         
         return {
             "output_video": output_path,
             "report": report,
             "average_score": avg_score,
-            "processing_time": processing_time
+            "processing_time": processing_time,
+            "segment_size": self.segment_size
         }
-
-if __name__ == "__main__":
-    scorer = RoadSafetyScorer()
-    result = scorer.process_video("input/sample_video.mp4", "output/annotated_output.mp4")
-    result['report'].to_csv("output/report.csv", index=False)

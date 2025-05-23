@@ -11,3 +11,6 @@ scipy>=1.7.0
 tqdm>=4.62.0
 Pillow>=9.0.0
 tabulate>=0.8.0
+# Add these if not already present
+opencv-contrib-python>=4.5.4
+scikit-image>=0.19.0

@@ -1,5 +1,6 @@
 from typing import List, Tuple, Dict
 import pandas as pd
+import numpy as np
 
 def compute_safety_score(vehicle_count: int, pedestrian_count: int, animal_count: int) -> int:
     """
@@ -30,13 +31,28 @@ def analyze_frame_detections(tracks: List[Tuple]) -> Dict[str, int]:
     
     return counts
 
-def generate_report(frame_stats: List[Dict]) -> pd.DataFrame:
+def generate_segment_report(frame_stats: List[Dict], fps: float, segment_size: float = 5.0) -> pd.DataFrame:
     """
-    Generate a report DataFrame from frame statistics.
+    Generate a report DataFrame with segment-based analysis.
+    Each segment is 'segment_size' seconds long.
     """
     df = pd.DataFrame(frame_stats)
-    df['safety_score'] = df.apply(
+    
+    # Calculate segment numbers
+    df['segment'] = (df['timestamp'] // segment_size).astype(int)
+    
+    # Group by segment and get max counts
+    segment_df = df.groupby('segment').agg({
+        'vehicle': 'max',
+        'pedestrian': 'max',
+        'animal': 'max',
+        'timestamp': 'first'
+    }).reset_index()
+    
+    # Calculate safety score for each segment
+    segment_df['score'] = segment_df.apply(
         lambda x: compute_safety_score(x['vehicle'], x['pedestrian'], x['animal']), 
         axis=1
     )
-    return df
+    
+    return segment_df

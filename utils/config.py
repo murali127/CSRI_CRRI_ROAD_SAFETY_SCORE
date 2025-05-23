@@ -1,24 +1,28 @@
 import numpy as np
 
-# Color mappings for different classes
+# Detection parameters
 COLORS = {
     'vehicle': (0, 255, 0),      # Green
-    'pedestrian': (255, 0, 0),    # Red
-    'animal': (0, 0, 255),        # Blue
-    'traffic_sign': (255, 255, 0) # Yellow
+    'pedestrian': (255, 0, 0),   # Red
+    'animal': (0, 0, 255),       # Blue
+    'road_box': (255, 255, 0),   # Yellow for road bounding box
+    'distance_line': (0, 255, 255) # Cyan for distance lines
 }
 
-# Class IDs mapping (based on COCO dataset)
 CLASS_IDS = {
-    'vehicle': [2, 3, 5, 7],      # car, motorcycle, bus, truck
-    'pedestrian': [0, 1],          # person
-    'animal': [15, 16, 17, 18, 19, 20, 21, 22, 23]  # various animals
+    'vehicle': [2, 3, 5, 7, 1],  # car, motorcycle, bus, truck, bicycle
+    'pedestrian': [0],            # person
+    'animal': list(range(15, 24)) # various animals
 }
-
+# config.py - Add these new parameters
+# utils/config.py
 # Detection thresholds
 DETECTION_THRESHOLD = 0.5
 TRACKING_THRESHOLD = 0.3
 
+# Road detection parameters
+ROAD_BOX_HEIGHT_RATIO = 0.4  # Height of road box as ratio of frame height
+MIN_VEHICLE_DISTANCE = 50    # Minimum safe distance between vehicles (pixels)
 # ROI (Region of Interest) mask - can be customized
 def create_roi_mask(width, height):
     """Create a mask for region of interest (entire frame by default)"""

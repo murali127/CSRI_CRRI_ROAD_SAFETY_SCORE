@@ -18,23 +18,28 @@ class YOLOXDetector:
         self.class_names = COCO_CLASSES
         self.cls_id_to_name = {i: name for i, name in enumerate(self.class_names)}
         
+# yolox_inference.py
     def _load_model(self, model_path: str):
         """Load YOLOX model"""
         exp = get_exp(None, "yolox-s")
         model = exp.get_model()
         logger.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
-        
-        if self.device == "cuda":
+    
+    # Modified CUDA handling
+        if self.device == "cuda" and torch.cuda.is_available():
             model.cuda()
+        elif self.device == "cuda":
+            logger.warning("CUDA not available, using CPU instead")
+            self.device = "cpu"
+    
         model.eval()
-        
+    
         logger.info("Loading checkpoint from {}".format(model_path))
-        ckpt = torch.load(model_path, map_location="cpu")
+        ckpt = torch.load(model_path, map_location=self.device)
         model.load_state_dict(ckpt["model"])
         logger.info("Loaded checkpoint successfully.")
-        
-        return model
     
+        return model
     def detect(self, img: np.ndarray) -> List[Tuple]:
         """Detect objects in image"""
         img_info = {"id": 0}
