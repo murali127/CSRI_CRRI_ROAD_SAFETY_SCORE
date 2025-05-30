@@ -27,9 +27,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for professional styling
-st.markdown("""
+# Custom CSS for professional styling and watermark background
+st.markdown(
     <style>
+        body {
+            background: url('CSIR.png') no-repeat center center fixed !important;
+            background-size: 60vw !important;
+            opacity: 1 !important;
+        }
         .main {
             background-color: #f8f9fa;
         }
@@ -74,7 +79,7 @@ st.markdown("""
             margin-left: 1rem;
         }
     </style>
-""", unsafe_allow_html=True)
+, unsafe_allow_html=True)
 
 # App header with logo and title
 header = st.container()
@@ -82,32 +87,32 @@ with header:
     col1, col2, col3 = st.columns([1, 5, 1])
     with col1:
         # Left logo
-        try:
-            logo_path = Path(__file__).parent / "logo.png"
-            if logo_path.exists():
-            logo = Image.open(logo_path)
-            padded_logo = ImageOps.expand(logo, border=16, fill=(255, 255, 255))
-            st.image(padded_logo, width=80)
-            else:
-            st.warning("Logo image not found")
-        except Exception as e:
-            st.warning(f"Could not load logo: {str(e)}")
-
+            try:
+                logo_path = Path(__file__).parent / "logo.png"
+                if logo_path.exists():
+                    logo = Image.open(logo_path)
+                    padded_logo = ImageOps.expand(logo, border=16, fill=(255, 255, 255))
+                    st.image(padded_logo, width=80)
+                else:
+                    st.warning("Logo image not found")
+            except Exception as e:
+                st.warning(f"Could not load logo: {str(e)}")
+    
         with col2:
-        st.title("Road Safety Scoring System")
-
+            st.title("Road Safety Scoring System")
+    
         with col3:
-        # Right logo
-        try:
-            right_logo_path = Path(__file__).parent / "csir-india.jpg"
-            if right_logo_path.exists():
-            right_logo = Image.open(right_logo_path)
-            padded_right_logo = ImageOps.expand(right_logo, border=16, fill=(255, 255, 255))
-            st.image(padded_right_logo, width=80)
-            else:
-            st.warning("Right logo image not found")
-        except Exception as e:
-            st.warning(f"Could not load right logo: {str(e)}")
+            # Right logo
+            try:
+                right_logo_path = Path(__file__).parent / "csir-india.jpg"
+                if right_logo_path.exists():
+                    right_logo = Image.open(right_logo_path)
+                    padded_right_logo = ImageOps.expand(right_logo, border=16, fill=(255, 255, 255))
+                    st.image(padded_right_logo, width=80)
+                else:
+                    st.warning("Right logo image not found")
+            except Exception as e:
+                st.warning(f"Could not load right logo: {str(e)}")
 
     st.markdown("""
         <div style="color: #4a4a4a; font-size: 16px; margin-bottom: 2rem;">
