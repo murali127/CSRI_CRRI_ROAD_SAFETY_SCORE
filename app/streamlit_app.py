@@ -97,7 +97,7 @@ with header:
 
     with col3:
         try:
-            right_logo_path = Path(__file__).parent / "csir-india.png"  # Use your second logo file name here
+            right_logo_path = Path(__file__).parent / "csir-india.jpg"  # Use your second logo file name here
             if right_logo_path.exists():
                 right_logo = Image.open(right_logo_path)
                 padded_right_logo = ImageOps.expand(right_logo, border=16, fill=(255, 255, 255))
