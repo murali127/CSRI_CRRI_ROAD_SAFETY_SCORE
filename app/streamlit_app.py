@@ -81,29 +81,31 @@ header = st.container()
 with header:
     col1, col2, col3 = st.columns([1, 5, 1])
     with col1:
+        # Left logo
         try:
             logo_path = Path(__file__).parent / "logo.png"
             if logo_path.exists():
-                logo = Image.open(logo_path)
-                padded_logo = ImageOps.expand(logo, border=16, fill=(255, 255, 255))
-                st.image(padded_logo, width=80)
+            logo = Image.open(logo_path)
+            padded_logo = ImageOps.expand(logo, border=16, fill=(255, 255, 255))
+            st.image(padded_logo, width=80)
             else:
-                st.warning("Logo image not found")
+            st.warning("Logo image not found")
         except Exception as e:
             st.warning(f"Could not load logo: {str(e)}")
 
-    with col2:
+        with col2:
         st.title("Road Safety Scoring System")
 
-    with col3:
+        with col3:
+        # Right logo
         try:
-            right_logo_path = Path(__file__).parent / "csir-india.jpg"  # Use your second logo file name here
+            right_logo_path = Path(__file__).parent / "csir-india.jpg"
             if right_logo_path.exists():
-                right_logo = Image.open(right_logo_path)
-                padded_right_logo = ImageOps.expand(right_logo, border=16, fill=(255, 255, 255))
-                st.image(padded_right_logo, width=80)
+            right_logo = Image.open(right_logo_path)
+            padded_right_logo = ImageOps.expand(right_logo, border=16, fill=(255, 255, 255))
+            st.image(padded_right_logo, width=80)
             else:
-                st.warning("Right logo image not found")
+            st.warning("Right logo image not found")
         except Exception as e:
             st.warning(f"Could not load right logo: {str(e)}")
 
