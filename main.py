@@ -33,12 +33,11 @@ class RoadSafetyScorer:
         self.segment_size = segment_size
 
     def process_video(self, input_path: str, output_path: str) -> dict:
-        """Process video and return analysis results"""
-        # Initialize result with all required keys
+        """Process video with improved score tracking"""
         result = {
             "output_video": output_path,
-            "report": pd.DataFrame(),  # Initialize empty DataFrame
-            "average_score": 0.0,      # Default value
+            "report": pd.DataFrame(),
+            "average_score": 0.0,
             "processing_time": 0.0,
             "segment_size": self.segment_size,
             "frame_stats": [],
@@ -47,25 +46,23 @@ class RoadSafetyScorer:
 
         try:
             cap = read_video(input_path)
-            if cap is None:
+            if not cap.isOpened():
                 result["error"] = "Could not open video file"
                 return result
 
             width, height, frame_count, fps = get_video_properties(cap)
             out_writer = initialize_video_writer(output_path, width, height, fps)
-            roi_mask = create_roi_mask(width, height)
-
-            frame_idx = 0
+            
             start_time = time.time()
-
+            frame_idx = 0
+            
             while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
 
                 # Process frame
-                masked_frame = cv2.bitwise_and(frame, frame, mask=roi_mask)
-                detections = self.detector.detect(masked_frame)
+                detections = self.detector.detect(frame)
                 tracks = self.tracker.update(detections)
 
                 # Pothole detection
@@ -73,48 +70,44 @@ class RoadSafetyScorer:
                 if self.pothole_detector:
                     try:
                         pothole_label, pothole_prob = self.pothole_detector.predict(frame)
-                        pothole_status = pothole_label == 1 if pothole_label is not None else False
-                        
-                        if pothole_status:
-                            cv2.putText(frame, f"Pothole ({pothole_prob:.2f})", 
-                                        (width - 300, 40), 
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
-                                        COLORS['pothole'], 2)
+                        pothole_status = pothole_label is not None and pothole_label == 1
                     except Exception as e:
-                        logger.warning(f"Pothole detection failed: {str(e)}")
+                        print(f"Pothole detection error: {str(e)}")
 
-                # Update stats and draw
+                # Get counts and score
                 counts = analyze_frame_detections(tracks, pothole_status)
                 score = compute_safety_score(
                     counts['vehicle'],
                     counts['pedestrian'],
                     counts['animal'],
-                    counts.get('pothole', False)
+                    counts['pothole']
                 )
 
+                # Store frame stats with timestamp
                 self.frame_stats.append({
                     "frame": frame_idx,
-                    "vehicle": counts['vehicle'],
-                    "pedestrian": counts['pedestrian'],
-                    "animal": counts['animal'],
+                    "vehicle": int(counts['vehicle']),
+                    "pedestrian": int(counts['pedestrian']),
+                    "animal": int(counts['animal']),
                     "pothole": int(pothole_status),
-                    "score": score,
-                    "timestamp": frame_idx / fps
+                    "score": float(score),
+                    "timestamp": frame_idx / fps if fps > 0 else frame_idx / 30  # Fallback to 30fps
                 })
 
+                # Visualization
                 frame = draw_objects(frame, detections, tracks)
                 frame = draw_safety_score(frame, score)
+                if pothole_status:
+                    cv2.putText(frame, "POTHOLE DETECTED", (width//2, 50), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, COLORS['pothole'], 2)
                 out_writer.write(frame)
                 frame_idx += 1
-
-            cap.release()
-            out_writer.release()
 
             # Generate final report
             if self.frame_stats:
                 result["report"] = generate_segment_report(self.frame_stats, fps, self.segment_size)
-                if not result["report"].empty and 'score' in result["report"]:
-                    result["average_score"] = float(result["report"]["score"].mean())
+                if not result["report"].empty:
+                    result["average_score"] = result["report"]["score"].mean()
                 result["frame_stats"] = self.frame_stats
 
             result["processing_time"] = time.time() - start_time
